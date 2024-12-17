@@ -1,39 +1,51 @@
 <!DOCTYPE html>
 <html>
+
 <head>
     <meta charset="utf-8">
     <title>광주광역시 지도</title>
     <!-- Kakao 지도 API -->
-    <script type="text/javascript" src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=e57cb823413fd3e03d73727bc0605831"></script>
+    <script type="text/javascript"
+        src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=내앱키&libraries=services"></script>
     <!-- XLSX 라이브러리 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="html2canvas.js"></script>
     <style>
         #map {
             width: 100%;
             height: 90vh;
         }
+
         #controls {
             margin: 10px;
             display: flex;
             flex-wrap: wrap;
         }
+
         .control-group {
             margin: 5px;
             display: flex;
             flex-direction: column;
         }
-        .control-group label, .control-group input {
+
+        .control-group label,
+        .control-group input {
             margin-bottom: 5px;
         }
-        button, input, select {
+
+        button,
+        input,
+        select {
             margin: 5px;
             padding: 5px;
         }
+
         input[type="range"] {
             width: 150px;
         }
     </style>
 </head>
+
 <body>
     <div id="controls">
         <div id="excelInputs">
@@ -78,6 +90,11 @@
                 <label for="colorPicker5">점 색상:</label>
                 <input type="color" id="colorPicker5" value="#FF00FF" />
             </div>
+            <div id="control-group">
+                <input type="text" id="regionInput" placeholder="행정구역 이름 입력">
+                <button onclick="searchRegion()">경계 표시</button>
+                <button onclick="captureMap()">지도 이미지 다운로드</button>
+            </div>
         </div>
         <!-- 지적편집도 -->
         <div class="control-group">
@@ -85,8 +102,11 @@
         </div>
     </div>
     <div id="map"></div>
+    <div id="staticMap"></div>
+
     <script>
         let map; // 지도 객체
+        let polygon = null;
         let layers = Array(5).fill(null).map(() => []); // 5개의 레이어 초기화
         let pointSizes = [10, 10, 10, 10, 10]; // 레이어별 점 크기
         let layerColors = ["#FF0000", "#00FF00", "#0000FF", "#FFFF00", "#FF00FF"]; // 레이어별 점 색상
@@ -109,6 +129,67 @@
             // 지적편집도 토글
             document.getElementById('toggleCadastral').addEventListener('click', toggleCadastralLayer);
         };
+
+        // 행정구역 검색 및 경계 표시
+        function searchRegion() {
+            const regionName = document.getElementById('regionInput').value;
+            const geocoder = new kakao.maps.services.Geocoder();
+
+            geocoder.addressSearch(regionName, function (result, status) {
+                if (status === kakao.maps.services.Status.OK) {
+                    const coords = new kakao.maps.LatLng(result[0].y, result[0].x);
+                    map.setCenter(coords);
+                    drawPolygon(coords);
+                } else {
+                    alert("행정구역을 찾을 수 없습니다.");
+                }
+            });
+        }
+
+        function drawPolygon(centerCoords) {
+            if (polygon) polygon.setMap(null); // 기존 경계 제거
+
+            const bounds = [
+                { lat: centerCoords.getLat() + 0.01, lng: centerCoords.getLng() - 0.01 },
+                { lat: centerCoords.getLat() + 0.01, lng: centerCoords.getLng() + 0.01 },
+                { lat: centerCoords.getLat() - 0.01, lng: centerCoords.getLng() + 0.01 },
+                { lat: centerCoords.getLat() - 0.01, lng: centerCoords.getLng() - 0.01 }
+            ];
+            const path = bounds.map(coord => new kakao.maps.LatLng(coord.lat, coord.lng));
+
+            polygon = new kakao.maps.Polygon({
+                path: path,
+                strokeWeight: 3,
+                strokeColor: '#FF00FF',
+                fillColor: '#FF99FF',
+                fillOpacity: 0.5
+            });
+            polygon.setMap(map);
+        }
+
+        // 지도 영역 캡처 및 이미지 다운로드
+        function downloadStaticMap() {
+            var staticMapContainer = document.getElementById('staticMap'),
+                staticMapOption = {
+                    center: map.getCenter(),
+                    level: 3,
+                    marker: {
+                        position: new kakao.maps.LatLng(33.450401, 126.570647),// 좌표가 없으면 이미지 지도 중심에 마커가 표시된다.
+                        text: '마커 위에 텍스트가 함께 표시된다' // 지정하지 않으면 마커만 표시된다.
+                    }
+                };
+
+            var staticMap = new kakao.maps.StaticMap(staticMapContainer, staticMapOption);
+
+            // Kakao Static Map API URL 생성
+            const staticMapUrl = `https://map.kakao.com/map/staticmap?appkey=${apiKey}&center=${lng},${lat}&level=3&size=${size}&mapTypeId=ROADMAP`;
+
+            // 이미지 다운로드
+            const link = document.createElement("a");
+            link.href = staticMapUrl;
+            link.download = "kakao_static_map.png";
+            link.click();
+        }
 
         function handleFileUpload(index) {
             return function (event) {
@@ -188,4 +269,5 @@
         }
     </script>
 </body>
+
 </html>
