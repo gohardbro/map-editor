@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>광주광역시 지도</title>
+    <!-- Kakao 지도 API -->
+    <script type="text/javascript" src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=e57cb823413fd3e03d73727bc0605831"></script>
+    <!-- XLSX 라이브러리 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        #map {
+            width: 100%;
+            height: 90vh;
+        }
+        #controls {
+            margin: 10px;
+            display: flex;
+            flex-wrap: wrap;
+        }
+        .control-group {
+            margin: 5px;
+            display: flex;
+            flex-direction: column;
+        }
+        .control-group label, .control-group input {
+            margin-bottom: 5px;
+        }
+        button, input, select {
+            margin: 5px;
+            padding: 5px;
+        }
+        input[type="range"] {
+            width: 150px;
+        }
+    </style>
+</head>
+<body>
+    <div id="controls">
+        <div id="excelInputs">
+            <!-- 엑셀 파일 업로드 -->
+            <div class="control-group">
+                <label for="fileInput1">엑셀 파일 1:</label>
+                <input type="file" id="fileInput1" accept=".xlsx" />
+                <label for="sizeSlider1">점 크기:</label>
+                <input type="range" id="sizeSlider1" min="5" max="50" value="10" />
+                <label for="colorPicker1">점 색상:</label>
+                <input type="color" id="colorPicker1" value="#FF0000" />
+            </div>
+            <div class="control-group">
+                <label for="fileInput2">엑셀 파일 2:</label>
+                <input type="file" id="fileInput2" accept=".xlsx" />
+                <label for="sizeSlider2">점 크기:</label>
+                <input type="range" id="sizeSlider2" min="5" max="50" value="10" />
+                <label for="colorPicker2">점 색상:</label>
+                <input type="color" id="colorPicker2" value="#00FF00" />
+            </div>
+            <div class="control-group">
+                <label for="fileInput3">엑셀 파일 3:</label>
+                <input type="file" id="fileInput3" accept=".xlsx" />
+                <label for="sizeSlider3">점 크기:</label>
+                <input type="range" id="sizeSlider3" min="5" max="50" value="10" />
+                <label for="colorPicker3">점 색상:</label>
+                <input type="color" id="colorPicker3" value="#0000FF" />
+            </div>
+            <div class="control-group">
+                <label for="fileInput4">엑셀 파일 4:</label>
+                <input type="file" id="fileInput4" accept=".xlsx" />
+                <label for="sizeSlider4">점 크기:</label>
+                <input type="range" id="sizeSlider4" min="5" max="50" value="10" />
+                <label for="colorPicker4">점 색상:</label>
+                <input type="color" id="colorPicker4" value="#FFFF00" />
+            </div>
+            <div class="control-group">
+                <label for="fileInput5">엑셀 파일 5:</label>
+                <input type="file" id="fileInput5" accept=".xlsx" />
+                <label for="sizeSlider5">점 크기:</label>
+                <input type="range" id="sizeSlider5" min="5" max="50" value="10" />
+                <label for="colorPicker5">점 색상:</label>
+                <input type="color" id="colorPicker5" value="#FF00FF" />
+            </div>
+        </div>
+        <!-- 지적편집도 -->
+        <div class="control-group">
+            <button id="toggleCadastral">지적편집도 활성화</button>
+        </div>
+    </div>
+    <div id="map"></div>
+    <script>
+        let map; // 지도 객체
+        let layers = Array(5).fill(null).map(() => []); // 5개의 레이어 초기화
+        let pointSizes = [10, 10, 10, 10, 10]; // 레이어별 점 크기
+        let layerColors = ["#FF0000", "#00FF00", "#0000FF", "#FFFF00", "#FF00FF"]; // 레이어별 점 색상
+        let isCadastralVisible = false; // 지적편집도 상태
+
+        window.onload = function () {
+            // 지도 초기화
+            map = new kakao.maps.Map(document.getElementById('map'), {
+                center: new kakao.maps.LatLng(35.1595454, 126.8526012), // 광주광역시 중심
+                level: 8
+            });
+
+            // 파일 입력 이벤트 및 컨트롤 설정
+            for (let i = 1; i <= 5; i++) {
+                document.getElementById(`fileInput${i}`).addEventListener('change', handleFileUpload(i - 1));
+                document.getElementById(`sizeSlider${i}`).addEventListener('input', handleSizeChange(i - 1));
+                document.getElementById(`colorPicker${i}`).addEventListener('input', handleColorChange(i - 1));
+            }
+
+            // 지적편집도 토글
+            document.getElementById('toggleCadastral').addEventListener('click', toggleCadastralLayer);
+        };
+
+        function handleFileUpload(index) {
+            return function (event) {
+                const file = event.target.files[0];
+                if (!file) return;
+
+                const reader = new FileReader();
+                reader.onload = function (e) {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const firstSheetName = workbook.SheetNames[0];
+                    const sheet = workbook.Sheets[firstSheetName];
+                    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+                    plotPoints(rows, index);
+                };
+                reader.readAsArrayBuffer(file);
+            };
+        }
+
+        function plotPoints(rows, layerIndex) {
+            // 기존 레이어 제거
+            layers[layerIndex].forEach(point => point.setMap(null));
+            layers[layerIndex] = [];
+
+            rows.forEach((row, index) => {
+                if (index === 0 || row.length < 2) return;
+
+                const lat = parseFloat(row[0]);
+                const lng = parseFloat(row[1]);
+                if (isNaN(lat) || isNaN(lng)) return;
+
+                const circle = new kakao.maps.Circle({
+                    center: new kakao.maps.LatLng(lat, lng),
+                    radius: pointSizes[layerIndex],
+                    strokeWeight: 0,
+                    fillColor: layerColors[layerIndex],
+                    fillOpacity: 0.8
+                });
+
+                circle.setMap(map);
+                layers[layerIndex].push(circle);
+            });
+        }
+
+        function handleSizeChange(index) {
+            return function (event) {
+                pointSizes[index] = parseInt(event.target.value);
+                updateLayer(index);
+            };
+        }
+
+        function handleColorChange(index) {
+            return function (event) {
+                layerColors[index] = event.target.value;
+                updateLayer(index);
+            };
+        }
+
+        function updateLayer(index) {
+            layers[index].forEach(circle => {
+                circle.setOptions({
+                    radius: pointSizes[index],
+                    fillColor: layerColors[index]
+                });
+            });
+        }
+
+        function toggleCadastralLayer() {
+            if (isCadastralVisible) {
+                map.removeOverlayMapTypeId(kakao.maps.MapTypeId.USE_DISTRICT);
+                this.textContent = "지적편집도 활성화";
+            } else {
+                map.addOverlayMapTypeId(kakao.maps.MapTypeId.USE_DISTRICT);
+                this.textContent = "지적편집도 비활성화";
+            }
+            isCadastralVisible = !isCadastralVisible;
+        }
+    </script>
+</body>
+</html>
